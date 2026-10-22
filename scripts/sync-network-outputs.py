@@ -189,11 +189,14 @@ def sync_outputs(
     client: HcpClient,
     outputs: Mapping[str, object],
     organization: str,
-    database_workspace: str,
+    database_workspace: str | list[str],
     auth_workspace: str,
 ) -> None:
     database, auth = build_definitions(outputs)
-    client.set_workspace_variables(organization, database_workspace, database)
+    # Na Fase 4 cada RDS (OS e Orçamento e Pagamento) tem workspace próprio.
+    workspaces = [database_workspace] if isinstance(database_workspace, str) else database_workspace
+    for workspace in workspaces:
+        client.set_workspace_variables(organization, workspace, database)
     client.set_workspace_variables(organization, auth_workspace, auth)
 
 
@@ -205,7 +208,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--organization", default=os.environ.get("TF_CLOUD_ORGANIZATION")
     )
-    parser.add_argument("--database-workspace", required=True)
+    parser.add_argument("--database-workspace", action="append", required=True)
     parser.add_argument("--auth-workspace", required=True)
     return parser.parse_args()
 
@@ -229,7 +232,7 @@ def main() -> int:
     )
     print(
         "Outputs de rede sincronizados com "
-        f"{args.database_workspace} e {args.auth_workspace}."
+        f"{', '.join(args.database_workspace)} e {args.auth_workspace}."
     )
     return 0
 
