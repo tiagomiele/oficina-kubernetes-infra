@@ -85,6 +85,26 @@ class SyncNetworkOutputsTest(unittest.TestCase):
         self.assertEqual(client.calls[0][0:2], ("oficina-org", "oficina-database-homolog"))
         self.assertEqual(client.calls[1][0:2], ("oficina-org", "oficina-auth-homolog"))
 
+    def test_syncs_each_database_workspace(self) -> None:
+        client = RecordingClient()
+
+        MODULE.sync_outputs(
+            client,
+            self.outputs,
+            "oficina-org",
+            ["oficina-fase4-db-os-homolog", "oficina-fase4-db-orcamento-pagamento-homolog"],
+            "oficina-fase4-auth-homolog",
+        )
+
+        self.assertEqual(
+            [call[1] for call in client.calls],
+            [
+                "oficina-fase4-db-os-homolog",
+                "oficina-fase4-db-orcamento-pagamento-homolog",
+                "oficina-fase4-auth-homolog",
+            ],
+        )
+
     def test_upserts_variables_and_removes_duplicates(self) -> None:
         client = RecordingHcpClient(
             [

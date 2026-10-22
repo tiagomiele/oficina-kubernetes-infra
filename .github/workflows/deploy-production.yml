@@ -98,8 +98,9 @@ jobs:
           python3 scripts/sync-network-outputs.py \
             --outputs-file "$RUNNER_TEMP/kubernetes-outputs.json" \
             --organization "$TF_CLOUD_ORGANIZATION" \
-            --database-workspace "oficina-database-${TARGET_ENVIRONMENT}" \
-            --auth-workspace "oficina-auth-${TARGET_ENVIRONMENT}"
+            --database-workspace "oficina-fase4-db-os-${TARGET_ENVIRONMENT}" \
+            --database-workspace "oficina-fase4-db-orcamento-pagamento-${TARGET_ENVIRONMENT}" \
+            --auth-workspace "oficina-fase4-auth-${TARGET_ENVIRONMENT}"
           echo "- outputs de rede sincronizados com Database e Auth" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Resumo dos outputs da infraestrutura
