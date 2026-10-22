@@ -1,0 +1,18 @@
+aws_region  = "us-west-2"
+environment = "production"
+
+vpc_cidr             = "10.1.0.0/16"
+availability_zones    = ["us-west-2a", "us-west-2b"]
+public_subnet_cidrs   = ["10.1.0.0/24", "10.1.1.0/24"]
+private_subnet_cidrs  = ["10.1.10.0/24", "10.1.11.0/24"]
+
+cluster_version             = "1.34"
+cluster_public_access_cidrs = ["0.0.0.0/0"]
+node_instance_types         = ["t3.medium"]
+node_desired_size           = 2
+node_min_size               = 1
+node_max_size               = 3
+node_disk_size              = 20
+cluster_log_retention_days  = 7
+
+# production é um ambiente lógico e descartável no AWS Academy.

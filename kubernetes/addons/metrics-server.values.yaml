@@ -1,0 +1,21 @@
+# Metrics Server: fonte de métricas de CPU e memória usada pelo HPA da aplicação.
+# Nenhum valor sensível é definido aqui.
+
+replicas: 1
+
+args:
+  - --kubelet-preferred-address-types=InternalIP,Hostname,ExternalIP
+  - --metric-resolution=15s
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 96Mi
+  limits:
+    memory: 192Mi
+
+podDisruptionBudget:
+  enabled: false
+
+metrics:
+  enabled: true

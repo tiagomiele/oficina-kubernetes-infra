@@ -1,0 +1,97 @@
+# Valores base do chart oficial newrelic/nri-bundle.
+#
+# Este arquivo NUNCA contém a license key. O segredo é criado no momento do
+# deploy como Secret Kubernetes e referenciado por global.customSecretName.
+# Cluster e ambiente são parametrizados por --set no script de deploy.
+
+global:
+  cluster: ""
+  licenseKey: ""
+  customSecretName: newrelic-license
+  customSecretLicenseKey: licenseKey
+  # Reduz o volume ingerido para caber no plano gratuito do New Relic.
+  lowDataMode: true
+  # Metadados propagados para todas as entidades e métricas do cluster,
+  # permitindo correlacionar APM, Kubernetes, logs e alertas.
+  customAttributes:
+    project: oficina
+    environment: ""
+    repository: oficina-kubernetes-infra
+  labels:
+    app.kubernetes.io/part-of: oficina-observability
+  podLabels:
+    app.kubernetes.io/part-of: oficina-observability
+
+# Agente de infraestrutura: nodes, namespaces, deployments, pods e containers.
+newrelic-infrastructure:
+  enabled: true
+  privileged: true
+  controlPlane:
+    # O control plane do EKS é gerenciado pela AWS e não é acessível ao agente.
+    enabled: false
+  common:
+    agentConfig:
+      # Correlaciona os processos da aplicação com as entidades Kubernetes.
+      enable_process_metrics: false
+
+# Métricas de estado dos objetos Kubernetes (réplicas, restarts, HPA).
+kube-state-metrics:
+  enabled: true
+  resources:
+    requests:
+      cpu: 20m
+      memory: 96Mi
+    limits:
+      memory: 192Mi
+  metricLabelsAllowlist:
+    - "pods=[app.kubernetes.io/name,app.kubernetes.io/part-of,app.kubernetes.io/component]"
+    - "deployments=[app.kubernetes.io/name,app.kubernetes.io/part-of]"
+    - "namespaces=[app.kubernetes.io/part-of]"
+
+# Eventos do Kubernetes (OOMKilled, FailedScheduling, scaling do HPA).
+nri-kube-events:
+  enabled: true
+
+# Injeta NEW_RELIC_METADATA_KUBERNETES_* nos pods da aplicação, ligando as
+# entidades APM ao cluster, namespace, deployment e pod correspondentes.
+nri-metadata-injection:
+  enabled: true
+
+# Encaminhamento dos logs JSON de stdout já decorados com trace.id/span.id
+# pelo agente Java. O agente APM não deve encaminhar logs em paralelo.
+newrelic-logging:
+  enabled: true
+  lowDataMode: true
+  fluentBit:
+    criEnabled: true
+    retryLimit: 5
+    sendMetrics: false
+
+# Prometheus agent apenas para os alvos anotados explicitamente
+# (prometheus.io/scrape ou newrelic.io/scrape), evitando ingestão desnecessária.
+newrelic-prometheus-agent:
+  enabled: true
+  lowDataMode: true
+  config:
+    common:
+      scrape_interval: 60s
+    kubernetes:
+      integrations_filter:
+        enabled: true
+
+# Componentes desativados por custo, licença ou incompatibilidade com o
+# AWS Academy.
+nri-prometheus:
+  enabled: false
+newrelic-pixie:
+  enabled: false
+pixie-chart:
+  enabled: false
+nr-ebpf-agent:
+  enabled: false
+k8s-agents-operator:
+  enabled: false
+newrelic-infra-operator:
+  enabled: false
+newrelic-k8s-metrics-adapter:
+  enabled: false

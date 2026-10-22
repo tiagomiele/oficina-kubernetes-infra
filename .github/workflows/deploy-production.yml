@@ -1,0 +1,188 @@
+# workflow Deploy production
+# validação deploy da aplicação homolog, infraestrutura, add-ons e observabilidade
+name: Deploy production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-production.yml'
+      - 'environments/**'
+      - 'kubernetes/**'
+      - 'observability/newrelic/**'
+      - 'scripts/**'
+      - '*.tf'
+      - '.terraform.lock.hcl'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  KUBECTL_VERSION: v1.34.1
+  HELM_VERSION: v3.18.4
+
+jobs:
+  deploy-production:
+    name: Deploy (production)
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      TARGET_ENVIRONMENT: production
+      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      TF_CLOUD_ORGANIZATION: ${{ vars.TF_CLOUD_ORGANIZATION }}
+      TF_WORKSPACE_INFRASTRUCTURE: ${{ vars.TF_WORKSPACE_PRODUCTION }}
+      TF_WORKSPACE_OBSERVABILITY: ${{ vars.TF_WORKSPACE_OBSERVABILITY_PRODUCTION }}
+      CLUSTER_NAME: ${{ vars.CLUSTER_NAME || 'oficina-production' }}
+      APP_NAMESPACE: ${{ vars.APP_NAMESPACE || 'oficina-production' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate branch and deployment configuration
+        env:
+          TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+          NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
+          NEW_RELIC_ACCOUNT_ID: ${{ vars.NEW_RELIC_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN TF_CLOUD_ORGANIZATION TF_WORKSPACE_INFRASTRUCTURE TF_WORKSPACE_OBSERVABILITY TF_API_TOKEN NEW_RELIC_LICENSE_KEY NEW_RELIC_API_KEY NEW_RELIC_ACCOUNT_ID; do
+            if [ -z "${!name:-}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf '::error::Configuração incompleta do GitHub Environment: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+      - name: Validate AWS Academy session
+        run: ./scripts/check-aws-session.sh
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+          terraform_wrapper: false
+
+      - name: Terraform init da infraestrutura
+        env:
+          TF_WORKSPACE: ${{ env.TF_WORKSPACE_INFRASTRUCTURE }}
+        run: terraform init -input=false -lockfile=readonly
+
+      - name: Terraform plan da infraestrutura
+        env:
+          TF_WORKSPACE: ${{ env.TF_WORKSPACE_INFRASTRUCTURE }}
+        run: terraform plan -input=false -no-color
+
+      - name: Terraform apply da infraestrutura
+        env:
+          TF_WORKSPACE: ${{ env.TF_WORKSPACE_INFRASTRUCTURE }}
+        run: terraform apply -input=false -auto-approve -no-color
+
+      - name: Sincronizar outputs de rede com Database e Auth
+        env:
+          TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
+          TF_WORKSPACE: ${{ env.TF_WORKSPACE_INFRASTRUCTURE }}
+        run: |
+          set -euo pipefail
+          terraform output -json > "$RUNNER_TEMP/kubernetes-outputs.json"
+          python3 scripts/sync-network-outputs.py \
+            --outputs-file "$RUNNER_TEMP/kubernetes-outputs.json" \
+            --organization "$TF_CLOUD_ORGANIZATION" \
+            --database-workspace "oficina-database-${TARGET_ENVIRONMENT}" \
+            --auth-workspace "oficina-auth-${TARGET_ENVIRONMENT}"
+          echo "- outputs de rede sincronizados com Database e Auth" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Resumo dos outputs da infraestrutura
+        env:
+          TF_WORKSPACE: ${{ env.TF_WORKSPACE_INFRASTRUCTURE }}
+        run: |
+          {
+            echo "## Infraestrutura aplicada"
+            echo
+            echo '```text'
+            terraform output -no-color eks_cluster_name
+            terraform output -no-color kubectl_config_command
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Setup kubectl compatível com o EKS 1.34
+        uses: azure/setup-kubectl@v4
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Deploy dos add-ons
+        env:
+          ENVIRONMENT: ${{ env.TARGET_ENVIRONMENT }}
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+        run: ./scripts/deploy-cluster-addons.sh
+
+      - name: Verificar rollout dos add-ons
+        run: ./scripts/verify-cluster-addons.sh
+
+      - name: Terraform init da observabilidade
+        working-directory: observability/newrelic
+        env:
+          TF_WORKSPACE: ${{ env.TF_WORKSPACE_OBSERVABILITY }}
+          TF_VAR_newrelic_api_key: ${{ secrets.NEW_RELIC_API_KEY }}
+          TF_VAR_newrelic_account_id: ${{ vars.NEW_RELIC_ACCOUNT_ID }}
+          TF_VAR_environment: ${{ env.TARGET_ENVIRONMENT }}
+          TF_VAR_cluster_name: ${{ env.CLUSTER_NAME }}
+          TF_VAR_health_check_url: ${{ vars.HEALTH_CHECK_URL }}
+          TF_VAR_synthetic_monitor_enabled: ${{ vars.SYNTHETIC_MONITOR_ENABLED || 'false' }}
+        run: terraform init -input=false -lockfile=readonly
+
+      - name: Terraform plan da observabilidade
+        working-directory: observability/newrelic
+        env:
+          TF_WORKSPACE: ${{ env.TF_WORKSPACE_OBSERVABILITY }}
+          TF_VAR_newrelic_api_key: ${{ secrets.NEW_RELIC_API_KEY }}
+          TF_VAR_newrelic_account_id: ${{ vars.NEW_RELIC_ACCOUNT_ID }}
+          TF_VAR_environment: ${{ env.TARGET_ENVIRONMENT }}
+          TF_VAR_cluster_name: ${{ env.CLUSTER_NAME }}
+          TF_VAR_health_check_url: ${{ vars.HEALTH_CHECK_URL }}
+          TF_VAR_synthetic_monitor_enabled: ${{ vars.SYNTHETIC_MONITOR_ENABLED || 'false' }}
+        run: terraform plan -input=false -no-color
+
+      - name: Terraform apply da observabilidade
+        working-directory: observability/newrelic
+        env:
+          TF_WORKSPACE: ${{ env.TF_WORKSPACE_OBSERVABILITY }}
+          TF_VAR_newrelic_api_key: ${{ secrets.NEW_RELIC_API_KEY }}
+          TF_VAR_newrelic_account_id: ${{ vars.NEW_RELIC_ACCOUNT_ID }}
+          TF_VAR_environment: ${{ env.TARGET_ENVIRONMENT }}
+          TF_VAR_cluster_name: ${{ env.CLUSTER_NAME }}
+          TF_VAR_health_check_url: ${{ vars.HEALTH_CHECK_URL }}
+          TF_VAR_synthetic_monitor_enabled: ${{ vars.SYNTHETIC_MONITOR_ENABLED || 'false' }}
+        run: terraform apply -input=false -auto-approve -no-color
+
+      - name: Resumo da observabilidade
+        working-directory: observability/newrelic
+        env:
+          TF_WORKSPACE: ${{ env.TF_WORKSPACE_OBSERVABILITY }}
+        run: |
+          {
+            echo "## Observabilidade aplicada"
+            echo
+            echo '```text'
+            terraform output -no-color alert_condition_names
+            echo '```'
+            echo
+            echo "- ambiente: \`${TARGET_ENVIRONMENT}\`"
+            echo "- cluster: \`${CLUSTER_NAME}\`"
+            echo "- commit: \`${GITHUB_SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
