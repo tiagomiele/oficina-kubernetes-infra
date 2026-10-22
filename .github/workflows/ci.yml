@@ -1,0 +1,231 @@
+# workflow CI
+# validação-deploy-da-aplicação
+name: CI
+
+on:
+  pull_request:
+    branches: [main, homolog]
+  push:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  repository-validation:
+    name: Repository validation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate required documentation
+        shell: bash
+        run: |
+          required_files=(
+            "README.md"
+            "docs/cicd.md"
+            "docs/infraestrutura-observabilidade.md"
+            "docs/assets/arquitetura-kubernetes-resumida.png"
+            "docs/assets/cicd-kubernetes-homologacao.png"
+            "docs/assets/cicd-kubernetes-producao.png"
+            "docs/assets/infraestrutura-observabilidade-kubernetes.png"
+          )
+
+          for file in "${required_files[@]}"; do
+            if [[ ! -s "$file" ]]; then
+              echo "::error file=$file::Arquivo obrigatório ausente ou vazio: $file"
+              exit 1
+            fi
+          done
+
+          echo "Documentação obrigatória validada."
+
+      - name: Validate GitHub Actions workflows
+        run: |
+          curl --retry 3 --retry-all-errors -fsSL \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz \
+            -o /tmp/actionlint.tar.gz
+          tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
+          /tmp/actionlint
+
+      - name: Test network output synchronization
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Detect committed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Reject plaintext New Relic keys
+        run: |
+          if grep -rInE '(NRAK|NRAA)-[A-Z0-9]{20,}|[0-9a-zA-Z]{36,40}NRAL' \
+            --exclude-dir=.git .; then
+            echo "::error::Chave New Relic em texto claro encontrada."
+            exit 1
+          fi
+
+  terraform-infrastructure:
+    name: Terraform infrastructure
+    needs: repository-validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform format
+        run: terraform fmt -check -recursive
+
+      - name: Provider lockfile presente
+        run: test -f .terraform.lock.hcl
+
+      - name: Terraform init without remote backend
+        run: |
+          for attempt in 1 2 3; do
+            if terraform init -backend=false -input=false -lockfile=readonly; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::Download do provider falhou (tentativa $attempt/3); tentando novamente."
+              sleep $((attempt * 10))
+            fi
+          done
+          exit 1
+
+      - name: Terraform validate
+        run: terraform validate -no-color
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: TFLint
+        run: |
+          tflint --init
+          tflint --recursive
+
+      - name: Trivy infrastructure scan
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: config
+          scan-ref: .
+          format: table
+          exit-code: '1'
+          severity: CRITICAL
+
+  terraform-observability:
+    name: Terraform observability
+    needs: terraform-infrastructure
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: observability/newrelic
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform format
+        run: terraform fmt -check -recursive
+
+      - name: Provider lockfile presente
+        run: test -f .terraform.lock.hcl
+
+      - name: Terraform init without remote backend
+        run: |
+          for attempt in 1 2 3; do
+            if terraform init -backend=false -input=false -lockfile=readonly; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::Download do provider falhou (tentativa $attempt/3); tentando novamente."
+              sleep $((attempt * 10))
+            fi
+          done
+          exit 1
+
+      - name: Terraform validate
+        run: terraform validate -no-color
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: TFLint
+        run: |
+          tflint --init
+          tflint --recursive
+
+      - name: Trivy infrastructure scan
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: config
+          scan-ref: observability/newrelic
+          format: table
+          exit-code: '1'
+          severity: CRITICAL
+
+  kubernetes-addons:
+    name: Kubernetes add-ons validation
+    needs: terraform-observability
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.18.4
+
+      - name: Lint YAML
+        run: |
+          pipx install yamllint
+          yamllint -c .yamllint.yml kubernetes .github/workflows
+
+      - name: Shell scripts
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck scripts/*.sh
+
+      - name: Helm template com valores de placeholder
+        run: ./scripts/lint-cluster-addons.sh
+
+      - name: Garantir que a license key venha de Secret externo
+        run: |
+          python3 -m pip install --quiet pyyaml
+          python3 - <<'PY'
+          import glob
+          import sys
+
+          import yaml
+
+          failures = []
+          for path in sorted(glob.glob("kubernetes/addons/*.yaml")):
+              with open(path, encoding="utf-8") as handler:
+                  values = yaml.safe_load(handler) or {}
+              global_values = values.get("global", {})
+              if global_values.get("licenseKey"):
+                  failures.append(f"{path}: global.licenseKey não pode ter valor")
+              if global_values.get("insightsKey"):
+                  failures.append(f"{path}: global.insightsKey não pode ter valor")
+
+          base = yaml.safe_load(open("kubernetes/addons/nri-bundle.values.yaml", encoding="utf-8"))
+          if base["global"].get("customSecretName") != "newrelic-license":
+              failures.append("nri-bundle deve referenciar o Secret newrelic-license")
+
+          if failures:
+              print("\n".join(f"::error::{failure}" for failure in failures))
+              sys.exit(1)
+          PY

@@ -1,0 +1,27 @@
+# Overlay de homologação. Nenhum valor sensível.
+
+global:
+  customAttributes:
+    environment: homolog
+  lowDataMode: true
+
+newrelic-infrastructure:
+  kubelet:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+  ksm:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+
+newrelic-prometheus-agent:
+  config:
+    common:
+      scrape_interval: 60s
