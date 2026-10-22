@@ -1,5 +1,5 @@
-# Dashboard único com quatro páginas: negócio, aplicação, Kubernetes e
-# serverless/API Gateway. As consultas usam apenas atributos não sensíveis.
+# Dashboard único: negócio, aplicação, Kubernetes, serverless/API Gateway, RDS e
+# Saga. As consultas usam apenas atributos não sensíveis.
 
 resource "newrelic_one_dashboard" "oficina" {
   count = local.count_enabled
@@ -452,6 +452,75 @@ resource "newrelic_one_dashboard" "oficina" {
       nrql_query {
         account_id = var.newrelic_account_id
         query      = "SELECT sum(slowQueryCount) FROM OficinaRdsSample WHERE ${local.rds_filter} SINCE 24 hours ago"
+      }
+    }
+  }
+
+  page {
+    name = "Saga"
+
+    widget_bar {
+      title  = "Eventos aplicados pelo OS Service (24h)"
+      row    = 1
+      column = 1
+      width  = 6
+      height = 3
+
+      nrql_query {
+        account_id = var.newrelic_account_id
+        query      = "SELECT count(*) FROM Log WHERE ${local.saga_log_filter} AND message LIKE 'Saga OS %: aplicando evento %' FACET aparse(message, 'Saga OS %: aplicando evento *') SINCE 24 hours ago"
+      }
+    }
+
+    widget_line {
+      title  = "Compensações executadas"
+      row    = 1
+      column = 7
+      width  = 6
+      height = 3
+
+      nrql_query {
+        account_id = var.newrelic_account_id
+        query      = "SELECT count(*) FROM Log WHERE ${local.saga_log_filter} AND message LIKE 'Saga OS %: compensação por %' FACET aparse(message, 'Saga OS %: compensação por *') TIMESERIES SINCE 24 hours ago"
+      }
+    }
+
+    widget_line {
+      title  = "Mensagens nas DLQs"
+      row    = 4
+      column = 1
+      width  = 6
+      height = 3
+
+      nrql_query {
+        account_id = var.newrelic_account_id
+        query      = "SELECT latest(approximateNumberOfMessages) FROM OficinaSqsSample WHERE ${local.business_filter} FACET queueName TIMESERIES SINCE 24 hours ago"
+      }
+    }
+
+    widget_line {
+      title  = "Falhas ao processar mensagens (por serviço)"
+      row    = 4
+      column = 7
+      width  = 6
+      height = 3
+
+      nrql_query {
+        account_id = var.newrelic_account_id
+        query      = "SELECT count(*) FROM Log WHERE ${local.saga_log_filter} AND (message LIKE 'Falha ao processar %' OR message LIKE 'Mensagem SQS % inválida%') FACET namespace_name TIMESERIES SINCE 24 hours ago"
+      }
+    }
+
+    widget_table {
+      title  = "Rastreio por correlationId (adicione AND correlationId = '<id>' na consulta)"
+      row    = 7
+      column = 1
+      width  = 12
+      height = 4
+
+      nrql_query {
+        account_id = var.newrelic_account_id
+        query      = "SELECT timestamp, correlationId, namespace_name, level, message FROM Log WHERE ${local.saga_log_filter} AND correlationId IS NOT NULL SINCE 1 hour ago LIMIT 200"
       }
     }
   }

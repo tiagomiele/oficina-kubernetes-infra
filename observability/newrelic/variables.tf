@@ -68,6 +68,12 @@ variable "kubernetes_namespace" {
   default     = "oficina"
 }
 
+variable "saga_namespaces" {
+  description = "Namespaces dos serviços da Saga. Vazio usa kubernetes_namespace e oficina-<serviço>-<env>."
+  type        = list(string)
+  default     = []
+}
+
 variable "kubernetes_deployment_name" {
   description = "Deployment da aplicação monitorado pelas condições de Kubernetes."
   type        = string

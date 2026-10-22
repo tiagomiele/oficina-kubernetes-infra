@@ -13,6 +13,22 @@ locals {
 
   # Condições estáticas: cada entrada gera um newrelic_nrql_alert_condition.
   alert_conditions = {
+    saga_dlq_com_mensagens = {
+      description = "Uma DLQ da Saga recebeu mensagens: um comando ou evento falhou 5 vezes."
+      query       = "SELECT max(approximateNumberOfMessages) FROM OficinaSqsSample WHERE ${local.business_filter} AND queueName NOT LIKE '%rds-newrelic-telemetry%' FACET queueName"
+      operator    = "above"
+      threshold   = 0
+      duration    = 300
+    }
+
+    saga_falhas_de_processamento = {
+      description = "Falhas repetidas ao processar mensagens da Saga nos consumidores SQS."
+      query       = "SELECT count(*) FROM Log WHERE ${local.saga_log_filter} AND (message LIKE 'Falha ao processar %' OR message LIKE 'Mensagem SQS % inválida%')"
+      operator    = "above"
+      threshold   = 5
+      duration    = 300
+    }
+
     healthcheck_indisponivel = {
       description = "Healthcheck público falhou no monitor sintético."
       query       = "SELECT filter(count(*), WHERE result != 'SUCCESS') FROM SyntheticCheck WHERE monitorName = '${local.synthetic_monitor_name}'"
