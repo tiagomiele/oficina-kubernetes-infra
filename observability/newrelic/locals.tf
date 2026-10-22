@@ -26,4 +26,12 @@ locals {
   deployment_where   = "${local.workload_filter} AND deploymentName = '${var.kubernetes_deployment_name}'"
   api_gateway_filter = "logtype = 'api-gateway-access' AND environment = '${var.environment}'"
   rds_filter         = "environment = '${var.environment}' AND databaseIdentifier = '${local.rds_database_identifier}'"
+
+  # Namespaces dos 3 serviços da Saga (OS, Diagnóstico e Reparo, Orçamento e Pagamento).
+  saga_namespaces = length(var.saga_namespaces) > 0 ? var.saga_namespaces : [
+    var.kubernetes_namespace,
+    "${var.project_name}-diagnostico-reparo-${var.environment}",
+    "${var.project_name}-orcamento-pagamento-${var.environment}",
+  ]
+  saga_log_filter = "cluster_name = '${local.cluster}' AND namespace_name IN (${join(", ", [for namespace in local.saga_namespaces : "'${namespace}'"])})"
 }
