@@ -15,7 +15,7 @@ locals {
 
   thresholds = var.alert_thresholds[var.environment]
 
-  synthetic_monitor_name    = "${local.name}-healthcheck"
+  synthetic_monitor_name    = "${local.name}-fase4-healthcheck"
   synthetic_monitor_created = var.synthetic_monitor_enabled && var.health_check_url != ""
 
   # Filtros reutilizados pelas consultas NRQL de dashboards e alertas.
