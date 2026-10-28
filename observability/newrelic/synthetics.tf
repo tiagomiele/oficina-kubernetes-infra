@@ -35,7 +35,7 @@ resource "newrelic_nrql_alert_condition" "synthetic_healthcheck" {
   account_id                   = var.newrelic_account_id
   policy_id                    = local.policy_id
   type                         = "static"
-  name                         = "${local.name} — monitor sintético falhando"
+  name                         = "${local.nr_name} — monitor sintético falhando"
   description                  = "O monitor sintético do healthcheck retornou falha."
   enabled                      = true
   aggregation_method           = "event_flow"

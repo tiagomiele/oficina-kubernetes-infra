@@ -11,7 +11,7 @@ resource "newrelic_notification_destination" "email" {
   count = local.notification_count
 
   account_id = var.newrelic_account_id
-  name       = "${local.name}-email"
+  name       = "${local.nr_name}-email"
   type       = "EMAIL"
   active     = true
 
@@ -25,7 +25,7 @@ resource "newrelic_notification_channel" "email" {
   count = local.notification_count
 
   account_id     = var.newrelic_account_id
-  name           = "${local.name}-email"
+  name           = "${local.nr_name}-email"
   type           = "EMAIL"
   destination_id = one(newrelic_notification_destination.email[*].id)
   product        = "IINT"
@@ -40,11 +40,11 @@ resource "newrelic_workflow" "main" {
   count = local.notification_count
 
   account_id            = var.newrelic_account_id
-  name                  = "${local.name}-workflow"
+  name                  = "${local.nr_name}-workflow"
   muting_rules_handling = "NOTIFY_ALL_ISSUES"
 
   issues_filter {
-    name = "${local.name}-filter"
+    name = "${local.nr_name}-filter"
     type = "FILTER"
 
     predicate {

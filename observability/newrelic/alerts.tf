@@ -4,7 +4,7 @@
 resource "newrelic_alert_policy" "main" {
   count = local.count_enabled
 
-  name                = "Oficina — ${var.environment}"
+  name                = local.nr_title
   incident_preference = var.alert_incident_preference
 }
 
@@ -173,7 +173,7 @@ resource "newrelic_nrql_alert_condition" "conditions" {
   account_id                   = var.newrelic_account_id
   policy_id                    = local.policy_id
   type                         = "static"
-  name                         = "${local.name} — ${replace(each.key, "_", " ")}"
+  name                         = "${local.nr_name} — ${replace(each.key, "_", " ")}"
   description                  = each.value.description
   enabled                      = true
   aggregation_method           = "event_flow"
@@ -200,7 +200,7 @@ resource "newrelic_nrql_alert_condition" "telemetria_ausente" {
   account_id                   = var.newrelic_account_id
   policy_id                    = local.policy_id
   type                         = "static"
-  name                         = "${local.name} — telemetria ausente"
+  name                         = "${local.nr_name} — telemetria ausente"
   description                  = "O cluster parou de enviar telemetria para o New Relic."
   enabled                      = true
   aggregation_method           = "event_flow"

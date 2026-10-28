@@ -4,7 +4,7 @@ resource "newrelic_nrql_alert_condition" "rds_telemetria_ausente" {
   account_id                   = var.newrelic_account_id
   policy_id                    = local.policy_id
   type                         = "static"
-  name                         = "${local.name} — telemetria RDS ausente"
+  name                         = "${local.nr_name} — telemetria RDS ausente"
   description                  = "A coleta agendada do RDS parou de publicar eventos no New Relic."
   enabled                      = true
   aggregation_method           = "event_flow"
