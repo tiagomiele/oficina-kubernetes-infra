@@ -1,5 +1,8 @@
 locals {
-  name                    = "${var.project_name}-${var.environment}"
+  name = "${var.project_name}-${var.environment}"
+  # Nomes no New Relic com "fase4": a conta também tem os recursos da Fase 3.
+  nr_name                 = "${var.project_name}-fase4-${var.environment}"
+  nr_title                = "Oficina-fase4-${var.environment}"
   count_enabled           = var.observability_enabled ? 1 : 0
   cluster                 = var.cluster_name != "" ? var.cluster_name : local.name
   application             = var.apm_application_name != "" ? var.apm_application_name : "${var.project_name}-backend-${var.environment}"
@@ -15,7 +18,7 @@ locals {
 
   thresholds = var.alert_thresholds[var.environment]
 
-  synthetic_monitor_name    = "${local.name}-fase4-healthcheck"
+  synthetic_monitor_name    = "${local.nr_name}-healthcheck"
   synthetic_monitor_created = var.synthetic_monitor_enabled && var.health_check_url != ""
 
   # Filtros reutilizados pelas consultas NRQL de dashboards e alertas.

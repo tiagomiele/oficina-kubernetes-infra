@@ -4,7 +4,7 @@
 resource "newrelic_one_dashboard" "oficina" {
   count = local.count_enabled
 
-  name        = "Oficina — ${var.environment}"
+  name        = local.nr_title
   permissions = "public_read_write"
 
   page {
