@@ -1,0 +1,33 @@
+// Copie para homolog.tfvars apenas para execução local. Não versione o arquivo
+// preenchido. Em HCP Terraform, cadastre estes valores como variáveis do
+// workspace e a API key como variável sensível.
+
+environment  = "homolog"
+project_name = "oficina"
+
+newrelic_account_id = 0000000
+newrelic_region     = "US"
+// newrelic_api_key vem da variável sensível do workspace ou de NEW_RELIC_API_KEY
+
+observability_enabled = true
+
+cluster_name               = "oficina-homolog"
+apm_application_name       = "oficina-backend-homolog"
+kubernetes_namespace       = "oficina-homolog"
+kubernetes_deployment_name = "oficina-app"
+
+api_gateway_name       = "oficina-auth-homolog-http-api"
+rds_database_identifier = "oficina-homolog-db"
+lambda_function_names = [
+  "oficina-auth-homolog-login",
+  "oficina-auth-homolog-authorizer",
+  "oficina-auth-homolog-notification-ingress",
+  "oficina-auth-homolog-notification-delivery",
+]
+
+// Preencha somente depois que o LoadBalancer publicar a URL do healthcheck.
+health_check_url          = ""
+synthetic_monitor_enabled = false
+
+notification_enabled = false
+notification_email   = ""

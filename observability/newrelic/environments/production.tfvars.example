@@ -1,0 +1,30 @@
+// Copie para production.tfvars apenas para execução local. Não versione o
+// arquivo preenchido.
+
+environment  = "production"
+project_name = "oficina"
+
+newrelic_account_id = 0000000
+newrelic_region     = "US"
+
+observability_enabled = true
+
+cluster_name               = "oficina-production"
+apm_application_name       = "oficina-backend-production"
+kubernetes_namespace       = "oficina-production"
+kubernetes_deployment_name = "oficina-app"
+
+api_gateway_name        = "oficina-auth-production-http-api"
+rds_database_identifier = "oficina-production-db"
+lambda_function_names = [
+  "oficina-auth-production-login",
+  "oficina-auth-production-authorizer",
+  "oficina-auth-production-notification-ingress",
+  "oficina-auth-production-notification-delivery",
+]
+
+health_check_url          = ""
+synthetic_monitor_enabled = false
+
+notification_enabled = false
+notification_email   = ""
